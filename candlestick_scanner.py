@@ -105,6 +105,9 @@ class CandleResult:
     ema9: float  = 0.0
     ema20: float = 0.0
     reasons: list = field(default_factory=list)
+    catalyst: str = "none"
+    catalyst_score: int = 0
+    headline: str = ""
     alert_text: str = ""
 
 
@@ -407,6 +410,11 @@ class ScoreEngine:
         else:
             verdict = "KEIN TRADE"
 
+        # ── Catalyst (Bug 4 Fix) ──────────────────────────────
+        cat_type, cat_score, headline = _get_catalyst(ticker)
+        if cat_score > 0 and total < 100:
+            total = min(100, total + 15)
+
         result = CandleResult(
             ticker=ticker, direction=direction, score=total,
             verdict=verdict, pattern=pat,
@@ -414,6 +422,9 @@ class ScoreEngine:
             or_high=or_high, or_low=or_low,
             vol_ratio=vol_ratio, ema9=ema9, ema20=ema20,
             reasons=reasons,
+            catalyst=cat_type,
+            catalyst_score=cat_score,
+            headline=headline,
         )
         result.alert_text = _build_alert(result)
         return result

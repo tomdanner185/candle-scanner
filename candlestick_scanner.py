@@ -40,6 +40,12 @@ from typing import Optional
 
 import yfinance as yf
 try:
+    from finnhub_feed import get_catalyst as _fh_catalyst, get_quote, has_finnhub, data_source as _fh_source
+    _FINNHUB_ACTIVE = True
+except ImportError:
+    _FINNHUB_ACTIVE = False
+    has_finnhub = lambda: False
+try:
     from options_flow import get_options_score, options_summary
     _OPTIONS_ACTIVE = True
 except ImportError:
@@ -85,7 +91,36 @@ CANDLE_UNIVERSE = [
 # ═══════════════════════════════════════════════════════════════
 #  DATENSTRUKTUREN
 # ═══════════════════════════════════════════════════════════════
-@dataclass
+# ── Finnhub Catalyst-Override (P3-C) ─────────────────────────
+def _get_catalyst(ticker: str) -> tuple:
+    if _FINNHUB_ACTIVE and has_finnhub():
+        from finnhub_feed import get_catalyst as _fh_cat
+        return _fh_cat(ticker)
+    # Fallback: yfinance.news
+    try:
+        import yfinance as yf
+        t    = yf.Ticker(ticker)
+        news = t.news or []
+        KW = {
+            "earnings_beat": (["beat","EPS beat","topped","above estimates","raised guidance"], 25),
+            "earnings_miss": (["miss","below estimates","cut guidance","lowered"], -20),
+            "fda":           (["FDA","approval","cleared","PDUFA","Phase 3"], 20),
+            "ma":            (["acquisition","merger","buyout","takeover"], 18),
+            "analyst":       (["upgrade","price target raised","outperform"], 10),
+            "negative":      (["downgrade","warning","disappoints"], -15),
+        }
+        best, btype, btitle = 0, "none", ""
+        for item in news[:5]:
+            title = (item.get("content",{}).get("title","") or item.get("title","")).lower()
+            for cat,(kws,sc) in KW.items():
+                if any(k.lower() in title for k in kws):
+                    if abs(sc) > abs(best):
+                        best,btype,btitle = sc,cat,title[:100]
+        return btype, best, btitle
+    except Exception:
+        return "none", 0, ""
+_fh_catalyst_override = True
+
 class Bar:
     o: float; h: float; l: float; c: float; v: float
 

@@ -9,8 +9,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY candlestick_scanner.py .
 COPY config.py .
-COPY regime.py .
+COPY exit_signal.py .
+COPY finnhub_feed.py .
 COPY main.py .
+COPY options_flow.py .
+COPY outcome_tracker.py .
+COPY premarket_scanner.py .
+COPY regime.py .
 
 ENV PYTHONUNBUFFERED=1
 ENV TZ=Europe/Berlin

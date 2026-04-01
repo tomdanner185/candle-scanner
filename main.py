@@ -85,6 +85,15 @@ async def main():
         replace_existing=True,
     )
 
+
+    # ── Outcome-Tracker täglich 16:15 ET (20:15 UTC = 22:15 CEST) ─
+    from outcome_tracker import run_outcome_update, migrate_db
+    migrate_db()
+    scheduler.add_job(run_outcome_update, 'cron',
+        hour=22, minute=15,
+        id='outcome_tracker', name='Outcome Tracker P40b',
+        replace_existing=True, misfire_grace_time=300)
+
     scheduler.start()
     log.info('Candle Scanner gestartet — Job: täglich 15:45 CEST (09:45 ET)')
     while True:

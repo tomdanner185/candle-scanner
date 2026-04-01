@@ -60,17 +60,13 @@ def _read_from_scan_runs() -> dict | None:
             log.debug(f"scan_runs zu alt ({age_h:.1f}h) — Fallback auf yfinance")
             return None
 
-        # 0 Signale bei US-Universe = Regime-Gate hat geblockt = Bear
-        # Das ist die einfachste heuristische Ableitung ohne regime-Feld
-        is_us  = universe in (None, "US", "us") if universe else True
-        bear   = (n_signals == 0 and is_us)
-
-        log.info(
-            f"Regime aus scan_runs: {'BEAR' if bear else 'BULL'} "
-            f"| n_signals={n_signals} | Alter={age_h:.1f}h"
+        # K3 Fix: n_signals=0 ist kein valider Regime-Indikator.
+        # Ohne regime-Feld in scan_runs -> Fallback auf yfinance.
+        log.debug(
+            f"scan_runs: n_signals={n_signals} | Alter={age_h:.1f}h"
+            " — kein regime-Feld, Fallback auf yfinance"
         )
-        return {"bear": bear, "panic": False, "vix": 0.0,
-                "source": "scan_runs", "age_h": round(age_h, 1)}
+        return None  # Fallback erzwingen
 
     except Exception as e:
         log.debug(f"scan_runs Lesefehler: {e}")

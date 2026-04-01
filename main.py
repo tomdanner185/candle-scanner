@@ -19,12 +19,12 @@ async def candle_job():
 
 async def main():
     scheduler = AsyncIOScheduler(timezone=config.TIMEZONE)
-    # 09:45 ET = 15:45 CEST (Sommer) / 14:45 CET (Winter)
+    # 10:30 ET = 14:30 UTC (Sommer/EDT) — VWAP+EMA nach 60 Min stabil (Fix M3/M4)
     # Scheduler läuft in Europe/Berlin — ET+6h Sommer, ET+5h Winter
-    # Wir nutzen UTC-basierte ET-Zeit via _et_now() in candlestick_scanner
+    # Verschoben von 09:45->10:30 ET: EMA20 braucht ~12 Bars, VWAP 60 Min Handelszeit
     scheduler.add_job(
         candle_job, 'cron',
-        hour=15, minute=45,
+        hour=14, minute=30,  # 14:30 UTC = 10:30 ET — VWAP+EMA stabil nach 60 Min
         id='candle_scan',
         name='Candlestick Scanner Modell 3',
         replace_existing=True,

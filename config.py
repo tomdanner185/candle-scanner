@@ -16,3 +16,6 @@ CANDLE_GAP_MIN_PCT     = float(os.getenv('CANDLE_GAP_MIN_PCT',  '5.0'))
 CANDLE_GAP_MAX_TICKERS = int(os.getenv('CANDLE_GAP_MAX_TICKERS','30'))
 MIN_AVG_VOLUME         = int(os.getenv('MIN_AVG_VOLUME',        '500000'))
 TIMEZONE               = os.getenv('TIMEZONE', 'Europe/Berlin')
+PREMARKET_MIN_SCORE   = int(os.getenv('PREMARKET_MIN_SCORE',   '60'))
+PREMARKET_MIN_GAP_PCT = float(os.getenv('PREMARKET_MIN_GAP_PCT','3.0'))
+EXIT_MONITOR_ENABLED  = os.getenv('EXIT_MONITOR_ENABLED', 'true').lower() == 'true'

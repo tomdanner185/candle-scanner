@@ -429,7 +429,7 @@ def _fetch_ticker(ticker: str) -> tuple:
     """
     try:
         t = yf.Ticker(ticker)
-        df_1min  = t.history(period="1d",  interval="1m",  prepost=False)
+        df_1min  = t.history(period="1d",  interval="5m",  prepost=False)
         df_daily = t.history(period="60d", interval="1d",  prepost=False)
 
         if df_1min.empty or len(df_1min) < 5:

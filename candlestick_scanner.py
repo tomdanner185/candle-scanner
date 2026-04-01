@@ -735,3 +735,33 @@ def run_candle_scan():
     if len(results) > len(strong):
         _send_batch_summary(results, min_score)
     log.info('=' * 50)
+
+
+# ── v3.1 Patch: Catalyst + PreMarket-Vol ─────────────────────
+def _get_catalyst(ticker: str) -> tuple:
+    try:
+        from premarket_scanner import _check_catalyst
+        return _check_catalyst(ticker)
+    except Exception:
+        pass
+    try:
+        t = yf.Ticker(ticker)
+        news = t.news or []
+        KW = {
+            'earnings_beat': (['beat','EPS beat','topped','above estimates','raised guidance'], 25),
+            'earnings_miss': (['miss','below estimates','cut guidance','lowered'],             -20),
+            'fda':           (['FDA','approval','cleared','PDUFA','Phase 3'],                  20),
+            'ma':            (['acquisition','merger','buyout','takeover'],                    18),
+            'analyst':       (['upgrade','price target raised','outperform'],                  10),
+            'negative':      (['downgrade','warning','disappoints'],                          -15),
+        }
+        best, btype, btitle = 0, 'none', ''
+        for item in news[:5]:
+            title = (item.get('content',{}).get('title','') or item.get('title','')).lower()
+            for cat,(kws,sc) in KW.items():
+                if any(k.lower() in title for k in kws):
+                    if abs(sc) > abs(best):
+                        best,btype,btitle = sc,cat,title[:100]
+        return btype, best, btitle
+    except Exception:
+        return 'none', 0, ''

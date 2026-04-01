@@ -64,7 +64,7 @@ CANDLE_UNIVERSE = [
     # Energy / Materials
     "XOM","CVX","COP","OXY","SLB","FCX","NEM","GOLD","CLF","X",
     # Consumer
-    "AMZN","WMT","TGT","COST","HD","LOW","NKE","LULU","SBUX","MCD",
+    "WMT","TGT","COST","HD","LOW","NKE","LULU","SBUX","MCD",
     # Industrials
     "CAT","DE","BA","GE","HON","RTX","LMT","NOC","GD","HWM",
     # Semis (intraday Momentum)
@@ -491,46 +491,108 @@ def _calc_vwap(df: pd.DataFrame) -> float:
 # ═══════════════════════════════════════════════════════════════
 #  ALERT-TEXT  (kompatibel mit bestehendem Panzer-Stil)
 # ═══════════════════════════════════════════════════════════════
+def _get_eur_usd() -> float:
+    """Holt aktuellen EUR/USD Kurs via yfinance. Fallback: 1.08."""
+    try:
+        import yfinance as yf
+        t = yf.Ticker("EURUSD=X")
+        df = t.history(period="1d", interval="1m")
+        if not df.empty:
+            return float(df["Close"].iloc[-1])
+    except Exception:
+        pass
+    return 1.08
+
+
 def _build_alert(r: CandleResult) -> str:
-    emoji = {"LONG SETUP": "🟢", "SHORT SETUP": "🔴",
-             "BEOBACHTEN LONG": "🟡", "BEOBACHTEN SHORT": "🟠",
-             "KEIN TRADE": "⚫"}.get(r.verdict, "⚪")
-    dir_sym = "▲ LONG" if r.direction == "LONG" else (
-              "▼ SHORT" if r.direction == "SHORT" else "—")
-    bar = "█" * round(r.score/10) + "░" * (10 - round(r.score/10))
-    pat_line = (f"\n🕯 Muster: {r.pattern.name} "
-                f"(Stärke {r.pattern.strength:.2f})\n"
-                f"   {r.pattern.ref}"
-                if r.pattern else "\n🕯 Muster: —")
+    """Baut Telegram-Alert im neuen Format. Preise in EUR."""
+    fx      = _get_eur_usd()
+    is_long = r.direction == "LONG"
+    arrow   = "▲" if is_long else "▼"
+    emoji   = "🟢" if is_long else "🔴"
+
+    def eur(usd_price: float) -> str:
+        return f"€{usd_price / fx:.2f}"
+
+    def pct(a: float, b: float) -> str:
+        p = (b - a) / a * 100
+        return f"{p:+.1f}%"
+
+    # Preise
+    entry = getattr(r, "price", 0) or 0
+    vwap  = getattr(r, "vwap", 0) or 0
+    or_h  = getattr(r, "or_high", 0) or 0
+    or_l  = getattr(r, "or_low", 0) or 0
+
+    if is_long:
+        sl  = or_l if or_l else entry * 0.97
+        tp1 = or_h + (or_h - or_l) * 1.5 if or_h else entry * 1.03
+        tp2 = or_h + (or_h - or_l) * 3.0 if or_h else entry * 1.06
+    else:
+        sl  = or_h if or_h else entry * 1.03
+        tp1 = or_l - (or_h - or_l) * 1.5 if or_l else entry * 0.97
+        tp2 = or_l - (or_h - or_l) * 3.0 if or_l else entry * 0.94
+
+    # Catalyst-Zeile
+    cat_line = ""
+    cat = getattr(r, "catalyst", "none") or "none"
+    if cat != "none" and cat:
+        cat_labels = {
+            "earnings_beat": "Earnings Beat",
+            "earnings_miss": "Earnings Miss",
+            "fda":           "FDA Catalyst",
+            "ma":            "M&A / Übernahme",
+            "analyst":       "Analyst-Upgrade",
+            "negative":      "Negatives Signal",
+        }
+        cat_line = "\n💥 " + cat_labels.get(cat, cat)
+
+    # Situationsbeschreibung
+    vol = getattr(r, "vol_ratio", 0) or 0
+    if is_long:
+        situation = f"{r.ticker} bricht nach oben aus"
+        action    = "Warum jetzt kaufen"
+        why = f"Kurs über Eröffnungs-Range + über VWAP. {vol:.1f}× mehr Volumen als üblich — institutionelle Käufer aktiv."
+        sell_1 = f"Kurs fällt unter {eur(vwap)} (VWAP)"
+        sell_2 = "Volumen bricht ein — Move verliert Kraft"
+        sell_label = "Verkaufen wenn"
+    else:
+        situation = f"{r.ticker} dreht nach unten"
+        action    = "Warum jetzt shorten"
+        why = f"Kurs unter Eröffnungs-Range + unter VWAP. {vol:.1f}× mehr Volumen als üblich — Abwärtsdruck bestätigt."
+        sell_1 = f"Kurs steigt über {eur(vwap)} (VWAP)"
+        sell_2 = "Volumen bricht ein — Druck lässt nach"
+        sell_label = "Position schliessen wenn"
+
+    sl_pct  = pct(entry, sl)
+    tp1_pct = pct(entry, tp1)
+    tp2_pct = pct(entry, tp2)
 
     lines = [
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"{emoji} {r.ticker}  |  {dir_sym}  |  {r.score}/100",
-        f"📊 {bar}  →  {r.verdict}",
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"💵 Kurs:   ${r.price:.2f}",
-        f"📈 VWAP:   ${r.vwap:.2f}",
-        f"📦 Vol:    {r.vol_ratio:.2f}×",
-        f"🔺 OR-H:   ${r.or_high:.2f}",
-        f"🔻 OR-L:   ${r.or_low:.2f}",
-        pat_line,
-        "",
-        "📋 Checks:",
-    ]
-    for reason in r.reasons:
-        lines.append(f"  · {reason}")
-    lines += [
-        "",
-        "⏰ Max-Exit: 13:30 ET",
-        "🔬 Zarattini(2024)·Xu&Zhu(2022)·Doss(2008)",
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"━━━━━━━━━━━━━━━━━━━━━━",
+        f"{emoji} {r.ticker}  {arrow} {r.direction}  {r.score}/100",
+        f"━━━━━━━━━━━━━━━━━━━━━━",
+        f"{situation}.{cat_line}",
+        f"",
+        f"{action}:",
+        f"{why}",
+        f"",
+        f"Einstieg:   {eur(entry)}",
+        f"Stop-Loss:  {eur(sl)}  ({sl_pct})",
+        f"Ziel 1:     {eur(tp1)}  ({tp1_pct})",
+        f"Ziel 2:     {eur(tp2)}  ({tp2_pct})",
+        f"",
+        f"EUR/USD: {fx:.4f}",
+        f"",
+        f"{sell_label}:",
+        f"1. {sell_1}",
+        f"2. {sell_2}",
+        f"3. Spätestens 13:30 ET (19:30 CEST)",
+        f"━━━━━━━━━━━━━━━━━━━━━━",
     ]
     return "\n".join(lines)
 
 
-# ═══════════════════════════════════════════════════════════════
-#  SQLITE LOGGING  (nutzt bestehende signals.db)
-# ═══════════════════════════════════════════════════════════════
 def _init_candle_db():
     """Erstellt candle_signals-Tabelle falls nicht vorhanden."""
     db_path = getattr(config, "DB_PATH", "signals.db")
@@ -589,7 +651,7 @@ def _log_result(r: CandleResult):
 # ═══════════════════════════════════════════════════════════════
 #  TELEGRAM  (nutzt bestehende config.TELEGRAM_TOKEN)
 # ═══════════════════════════════════════════════════════════════
-def _send_telegram(text: str):
+def _send_telegram(text: str, parse_mode: str = None):
     """Nutzt bestehenden Telegram-Setup aus config.py."""
     import urllib.request
     token   = getattr(config, "TELEGRAM_TOKEN", "") or \
@@ -599,10 +661,10 @@ def _send_telegram(text: str):
         log.warning("Telegram: Token/ChatID fehlt in config.py")
         return
     import json
-    data = json.dumps({
-        "chat_id": chat_id, "text": text,
-        "parse_mode": "HTML", "disable_web_page_preview": True
-    }).encode()
+    payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    data = json.dumps(payload).encode()
     try:
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{token}/sendMessage",
@@ -679,15 +741,17 @@ def run_candle_scan():
     if not (9*60 <= mins <= 13*60+30):
         log.info(f'CANDLE SCAN aborted — ausserhalb Handelszeit ({et_h:02d}:{et_m:02d} ET)')
         return
+    _regime = {'bear': False, 'panic': False}
     try:
-        from regime import calc_regime
-        regime = calc_regime('US')
-        if regime.get('panic'):
+        from regime import calc_regime, check_regime as _chk_regime
+        _regime = calc_regime('US')
+        if _regime.get('panic'):
             log.warning('CANDLE SCAN aborted — US PANIC')
             return
-        log.info(f'Regime Gate: {"BEAR" if regime.get("bear") else "BULL"} | Panic={regime.get("panic")} OK')
+        log.info(f'Regime Gate: {"BEAR" if _regime.get("bear") else "BULL"} | VIX={_regime.get("vix",0):.1f} | Panic={_regime.get("panic")} OK')
     except Exception as e:
         log.warning(f'Regime Gate Fehler: {e} — weiter')
+        _chk_regime = None
     _init_candle_db()
     recognizer = CandleRecognizer()
     engine     = ScoreEngine()
@@ -715,6 +779,15 @@ def run_candle_scan():
             result   = engine.score(ticker, df_1min, df_daily, patterns, et_h, et_m)
             _log_result(result)
             if result.score >= min_score and result.verdict != 'KEIN TRADE':
+                # Regime-Richtungsfilter: kein Long bei Bear, kein Short bei Bull-Panic
+                if _chk_regime:
+                    try:
+                        chk = _chk_regime(result.direction)
+                        if not chk.get('allow', True):
+                            log.info(f'  SKIP {result.ticker} {result.direction} — Regime: {chk.get(reason,)}')
+                            continue
+                    except Exception:
+                        pass
                 results.append(result)
                 log.info(f'  OK {ticker:<8} {result.direction:<6} Score={result.score} | {result.verdict} | {result.pattern.name if result.pattern else "-"}')
             time.sleep(0.3)

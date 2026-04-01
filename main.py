@@ -95,7 +95,7 @@ async def main():
         replace_existing=True, misfire_grace_time=300)
 
     scheduler.start()
-    log.info('Candle Scanner gestartet — Job: täglich 15:45 CEST (09:45 ET)')
+    log.info('Candle Scanner gestartet — Job: täglich 16:30 CEST (10:30 ET)')
     while True:
         await asyncio.sleep(3600)
 

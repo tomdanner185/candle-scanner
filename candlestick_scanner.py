@@ -39,6 +39,14 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import yfinance as yf
+try:
+    from options_flow import get_options_score, options_summary
+    _OPTIONS_ACTIVE = True
+except ImportError:
+    _OPTIONS_ACTIVE = False
+    def get_options_score(t): return 0, 'no_data', ''
+    def options_summary(t): return ''
+
 import pandas as pd
 import numpy as np
 
@@ -414,6 +422,13 @@ class ScoreEngine:
         cat_type, cat_score, headline = _get_catalyst(ticker)
         if cat_score > 0 and total < 100:
             total = min(100, total + 15)
+
+        # ── Options-Flow (P3-B) ──────────────────────────────
+        opt_score, opt_signal, opt_detail = get_options_score(ticker)
+        if opt_score > 0 and total < 100:
+            total = min(100, total + min(opt_score, 10))
+        elif opt_score < 0:
+            total = max(0, total + opt_score)
 
         result = CandleResult(
             ticker=ticker, direction=direction, score=total,

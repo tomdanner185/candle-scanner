@@ -21,6 +21,8 @@ GitHub: github.com/tomdanner185/candle-scanner (privat)
 - Aktivierung: nach erstem stabilen Candle-Scan Lauf
 
 ### Regime-Gate (standalone — regime.py)
+# BEWUSSTES DESIGN: Candle Scanner nutzt SPY<EMA50 (kurzfristig konservativ)
+# Panzer Bot nutzt 24M-Return (langfristiger). Divergenz ist gewollt.
 - SPY EMA50 Check + VIX Check
 - PANIC → Scan abgebrochen
 - Zeitfenster-Gate: nur 09:00–13:30 ET

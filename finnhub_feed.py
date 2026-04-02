@@ -68,7 +68,7 @@ def get_quote(ticker: str) -> dict:
             "source":     "finnhub",
         }
         _CACHE[cache_key] = {"ts": now, "data": result}
-        log.debug(f"Finnhub quote {ticker}: {result[price]} ({result[change_pct]:+.1f}%)")
+        log.debug(f"Finnhub quote {ticker}: {result['price']} ({result['change_pct']:+.1f}%)")
         return result
     except Exception as e:
         log.debug(f"Finnhub quote Fehler {ticker}: {e}")

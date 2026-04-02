@@ -123,12 +123,75 @@ def calc_regime(market: str = "US") -> dict:
     return _calc_from_yfinance()
 
 
+
+
+def _check_crash_kill_switch() -> bool:
+    """
+    P55 — Crash Kill Switch (Daniel & Moskowitz 2016)
+    True = Kill Switch aktiv = KEIN Trading (weder Long noch Short)
+
+    Bedingung: ALLE drei müssen gleichzeitig gelten:
+      1. Bear-Markt (SPY < EMA50)
+      2. 24-Monats-Return SPY negativ (langfristiger Abschwung)
+      3. Starker Rebound letzte 5 Tage (>+3%)
+
+    Warum: Genau in diesem Szenario passierten historisch
+    die schlimmsten Momentum-Crashes (-70%+).
+    Selbst Short-Momentum kollabiert bei starken Bear-Rebounds.
+    """
+    try:
+        spy = yf.download("SPY", period="25mo", interval="1d",
+                          progress=False, auto_adjust=True)
+        if spy.empty or len(spy) < 50:
+            return False
+
+        close = spy["Close"].squeeze()
+
+        # Bedingung 1: Bear-Markt
+        ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1])
+        last  = float(close.iloc[-1])
+        bear  = last < ema50
+        if not bear:
+            return False
+
+        # Bedingung 2: 24-Monats-Return negativ
+        if len(close) >= 480:  # ~24 Monate Handelstage
+            price_24m_ago = float(close.iloc[-480])
+        else:
+            price_24m_ago = float(close.iloc[0])
+        return_24m = (last - price_24m_ago) / price_24m_ago
+        if return_24m >= 0:
+            return False
+
+        # Bedingung 3: Starker Rebound letzte 5 Tage (>+3%)
+        price_5d_ago = float(close.iloc[-6]) if len(close) >= 6 else float(close.iloc[0])
+        rebound_5d   = (last - price_5d_ago) / price_5d_ago
+        if rebound_5d < 0.03:
+            return False
+
+        log.warning(
+            f"P55 CRASH KILL SWITCH AKTIV: "
+            f"Bear={bear} | 24M-Return={return_24m:.1%} | "
+            f"5d-Rebound={rebound_5d:.1%}"
+        )
+        return True
+
+    except Exception as e:
+        log.debug(f"Crash Kill Switch Fehler: {e}")
+        return False
+
 def check_regime(direction: str = "LONG") -> dict:
     """
     Bidirektionales Gate für candlestick_scanner.py
     LONG:  blocken bei BEAR oder PANIC
     SHORT: erlauben bei BEAR/PANIC (Xu & Zhu 2022)
     """
+    # P55: Crash Kill Switch — vor allem anderen prüfen
+    if _check_crash_kill_switch():
+        return {"allow": False,
+                "reason": "P55 CRASH KILL SWITCH — Bear+24MNeg+Rebound: kein Trading",
+                "regime": "CRASH_RISK", "bear": True, "panic": False, "vix": 0.0}
+
     r     = calc_regime()
     bear  = r.get("bear", False)
     panic = r.get("panic", False)

@@ -4,3 +4,4 @@ numpy>=1.24
 apscheduler>=3.10
 python-dotenv>=1.0
 requests>=2.31
+finnhub-python>=2.4

@@ -14,6 +14,7 @@ COPY finnhub_feed.py .
 COPY main.py .
 COPY options_flow.py .
 COPY outcome_tracker.py .
+COPY telegram_bot.py .
 COPY premarket_scanner.py .
 COPY regime.py .
 

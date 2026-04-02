@@ -94,6 +94,18 @@ async def main():
         id='outcome_tracker', name='Outcome Tracker P40b',
         replace_existing=True, misfire_grace_time=300)
 
+    
+    # -- Telegram Bot Polling (/report, /status) --
+    try:
+        from telegram_bot import start_bot
+        import config as _cfg
+        _tok = getattr(_cfg, 'TELEGRAM_TOKEN', '') or getattr(_cfg, 'TELEGRAM_BOT_TOKEN', '')
+        _cid = getattr(_cfg, 'TELEGRAM_CHAT_ID', '')
+        if _tok and _cid:
+            start_bot(_tok, _cid)
+    except Exception as _e:
+        pass
+
     scheduler.start()
     log.info('Candle Scanner gestartet — Job: täglich 16:30 CEST (10:30 ET)')
     while True:

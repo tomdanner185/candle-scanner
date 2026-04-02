@@ -24,7 +24,7 @@ async def main():
     # Verschoben von 09:45->10:30 ET: EMA20 braucht ~12 Bars, VWAP 60 Min Handelszeit
     scheduler.add_job(
         candle_job, 'cron',
-        hour=14, minute=30,  # 14:30 UTC = 10:30 ET — VWAP+EMA stabil nach 60 Min
+        hour=16, minute=30,  # 16:30 CEST = 14:30 UTC = 10:30 ET — VWAP+EMA stabil nach 60 Min
         id='candle_scan',
         name='Candlestick Scanner Modell 3',
         replace_existing=True,

@@ -565,8 +565,37 @@ def _get_eur_usd() -> float:
     return 1.08
 
 
-def _build_alert(r: CandleResult) -> str:
-    """Baut Telegram-Alert im neuen Format. Preise in EUR."""
+def _build_alert(r: CandleResult, regime_str: str = "BULL") -> str:
+    """Baut Telegram-Alert. Für LONG: signal_engine-Format; SHORT: altes Format."""
+    entry = getattr(r, "price", 0) or 0
+    or_h  = getattr(r, "or_high", 0) or 0
+    or_l  = getattr(r, "or_low", 0) or 0
+    vol   = getattr(r, "vol_ratio", 0) or 0
+
+    # Neues Format (signal_engine) — nur für LONG
+    if r.direction == "LONG" and entry > 0:
+        try:
+            from signal_engine import format_alert_message, StopState as _StopState
+            _sl    = or_l if or_l else round(entry * 0.97, 2)
+            _spike = ((entry - or_l) / or_l * 100) if or_l else 0.0
+            _stop  = _StopState(stop_price=_sl, stop_rule="INITIAL")
+            msg = format_alert_message(
+                ticker    = r.ticker,
+                mode      = "candle",
+                entry     = entry,
+                stop      = _stop,
+                regime    = regime_str,
+                ml_prob   = None,
+                vol_ratio = vol,
+                size_pct  = 1.0,
+                spike_pct = round(_spike, 1),
+            )
+            if msg:
+                return msg
+        except Exception as _e:
+            log.debug(f"signal_engine Candle-Format Fehler {r.ticker}: {_e}")
+
+    # Fallback (alte Darstellung) — auch für SHORT
     fx      = _get_eur_usd()
     is_long = r.direction == "LONG"
     arrow   = "▲" if is_long else "▼"
@@ -579,11 +608,7 @@ def _build_alert(r: CandleResult) -> str:
         p = (b - a) / a * 100
         return f"{p:+.1f}%"
 
-    # Preise
-    entry = getattr(r, "price", 0) or 0
     vwap  = getattr(r, "vwap", 0) or 0
-    or_h  = getattr(r, "or_high", 0) or 0
-    or_l  = getattr(r, "or_low", 0) or 0
 
     if is_long:
         sl  = or_l if or_l else entry * 0.97
@@ -594,7 +619,6 @@ def _build_alert(r: CandleResult) -> str:
         tp1 = or_l - (or_h - or_l) * 1.5 if or_l else entry * 0.97
         tp2 = or_l - (or_h - or_l) * 3.0 if or_l else entry * 0.94
 
-    # Catalyst-Zeile
     cat_line = ""
     cat = getattr(r, "catalyst", "none") or "none"
     if cat != "none" and cat:
@@ -608,26 +632,18 @@ def _build_alert(r: CandleResult) -> str:
         }
         cat_line = "\n💥 " + cat_labels.get(cat, cat)
 
-    # Situationsbeschreibung
-    vol = getattr(r, "vol_ratio", 0) or 0
     if is_long:
-        situation = f"{r.ticker} bricht nach oben aus"
-        action    = "Warum jetzt kaufen"
-        why = f"Kurs über Eröffnungs-Range + über VWAP. {vol:.1f}× mehr Volumen als üblich — institutionelle Käufer aktiv."
-        sell_1 = f"Kurs fällt unter {eur(vwap)} (VWAP)"
-        sell_2 = "Volumen bricht ein — Move verliert Kraft"
+        situation  = f"{r.ticker} bricht nach oben aus"
+        action     = "Warum jetzt kaufen"
+        why        = f"Kurs über Eröffnungs-Range + über VWAP. {vol:.1f}× mehr Volumen als üblich — institutionelle Käufer aktiv."
+        sell_1     = f"Kurs fällt unter {eur(vwap)} (VWAP)"
         sell_label = "Verkaufen wenn"
     else:
-        situation = f"{r.ticker} dreht nach unten"
-        action    = "Warum jetzt shorten"
-        why = f"Kurs unter Eröffnungs-Range + unter VWAP. {vol:.1f}× mehr Volumen als üblich — Abwärtsdruck bestätigt."
-        sell_1 = f"Kurs steigt über {eur(vwap)} (VWAP)"
-        sell_2 = "Volumen bricht ein — Druck lässt nach"
+        situation  = f"{r.ticker} dreht nach unten"
+        action     = "Warum jetzt shorten"
+        why        = f"Kurs unter Eröffnungs-Range + unter VWAP. {vol:.1f}× mehr Volumen als üblich — Abwärtsdruck bestätigt."
+        sell_1     = f"Kurs steigt über {eur(vwap)} (VWAP)"
         sell_label = "Position schliessen wenn"
-
-    sl_pct  = pct(entry, sl)
-    tp1_pct = pct(entry, tp1)
-    tp2_pct = pct(entry, tp2)
 
     lines = [
         f"━━━━━━━━━━━━━━━━━━━━━━",
@@ -639,15 +655,15 @@ def _build_alert(r: CandleResult) -> str:
         f"{why}",
         f"",
         f"Einstieg:   {eur(entry)}",
-        f"Stop-Loss:  {eur(sl)}  ({sl_pct})",
-        f"Ziel 1:     {eur(tp1)}  ({tp1_pct})",
-        f"Ziel 2:     {eur(tp2)}  ({tp2_pct})",
+        f"Stop-Loss:  {eur(sl)}  ({pct(entry, sl)})",
+        f"Ziel 1:     {eur(tp1)}  ({pct(entry, tp1)})",
+        f"Ziel 2:     {eur(tp2)}  ({pct(entry, tp2)})",
         f"",
         f"EUR/USD: {fx:.4f}",
         f"",
         f"{sell_label}:",
         f"1. {sell_1}",
-        f"2. {sell_2}",
+        f"2. Volumen bricht ein — Move verliert Kraft",
         f"3. Spätestens 13:30 ET (19:30 CEST)",
         f"━━━━━━━━━━━━━━━━━━━━━━",
     ]
@@ -861,8 +877,14 @@ def run_candle_scan():
     if not results:
         log.info(f'Keine Setups >= {min_score}')
         return
+    _regime_str = "BEAR" if _regime.get("bear") else "BULL"
     strong = [r for r in results if r.score >= 80]
     for r in strong:
+        # Alert mit aktuellem Regime-String neu bauen
+        try:
+            r.alert_text = _build_alert(r, regime_str=_regime_str)
+        except Exception:
+            pass
         _send_telegram(r.alert_text)
         log.info(f'  Alert: {r.ticker} {r.score}/100')
         time.sleep(1)

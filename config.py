@@ -19,3 +19,6 @@ TIMEZONE               = os.getenv('TIMEZONE', 'Europe/Berlin')
 PREMARKET_MIN_SCORE   = int(os.getenv('PREMARKET_MIN_SCORE',   '60'))
 PREMARKET_MIN_GAP_PCT = float(os.getenv('PREMARKET_MIN_GAP_PCT','3.0'))
 EXIT_MONITOR_ENABLED  = os.getenv('EXIT_MONITOR_ENABLED', 'true').lower() == 'true'
+
+# ── Signal Engine ───────────────────────────────────────────────────────
+EURUSD_FALLBACK         = float(os.getenv('EURUSD_FALLBACK', '1.08'))

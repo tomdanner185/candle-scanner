@@ -82,3 +82,15 @@ docker logs candle_scanner --since 2m | tail -10
 - **P57**: Morning/Afternoon Gewichtung im Score implementieren
 - **Pre-Market**: Scheduler-Eintrag aktivieren (nach stabilem C1)
 - **C3**: LightGBM auf 50+ Features (nach 30 Tagen Daten)
+
+## Shared Files (WICHTIG)
+Diese Files existieren identisch in beiden Repos:
+- candlestick_scanner.py
+- signal_engine.py
+
+Bei Änderung an einer dieser Dateien IMMER:
+bash /root/sync_shared.sh
+→ synchronisiert beide Repos + rebuildet momentum_scanner
+  + docker cp in candle_scanner + Integrationstest
+
+Source of Truth: /root/candle_scanner/

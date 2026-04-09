@@ -565,7 +565,83 @@ def _get_eur_usd() -> float:
     return 1.08
 
 
-def _build_alert(r: CandleResult, regime_str: str = "BULL") -> str:
+
+# ── Kelly-basiertes Position Sizing (P54 Candle Scanner) ────────────────
+
+def calc_candle_position(
+    score: float,
+    market_cap: float,
+    regime: str,
+    vix: float,
+) -> dict:
+    """
+    Kelly-basiertes Position Sizing fuer Candle Signals.
+    Identische Logik wie Panzer Bot P54.
+    """
+    regime_upper = regime.upper()
+    if regime_upper in ("BEAR", "PANIC", "CRASH_RISK"):
+        return {"position_pct": 0.0, "reason": f"{regime_upper}_BLOCKED",
+                "position_pct_display": "0.0%", "base_kelly": 0,
+                "regime_mult": 0, "vix_mult": 0, "score_mult": 0,
+                "size_class": "N/A"}
+
+    regime_mult = {
+        "BULL":   config.REGIME_MULT_BULL,
+        "YELLOW": config.REGIME_MULT_YELLOW,
+    }.get(regime_upper, 0.5)
+
+    # VIX-Multiplikator
+    if vix > 30:
+        vix_mult = 0.5
+    elif vix > 25:
+        vix_mult = 0.75
+    else:
+        vix_mult = 1.0
+
+    # Score-Multiplikator (0-100 -> 0.5-1.0)
+    score_mult = 0.5 + (min(score, 100) / 100) * 0.5
+
+    # Kelly nach MarktKap
+    if market_cap is None or market_cap <= 0:
+        base_kelly = config.KELLY_BASE
+    elif market_cap < 300_000_000:
+        return {"position_pct": 0.0, "reason": "MICRO_BLOCKED",
+                "position_pct_display": "0.0%", "base_kelly": 0,
+                "regime_mult": regime_mult, "vix_mult": vix_mult,
+                "score_mult": round(score_mult, 2), "size_class": "MICRO"}
+    elif market_cap < 2_000_000_000:
+        base_kelly = config.KELLY_SMALL
+    elif market_cap < 10_000_000_000:
+        base_kelly = config.KELLY_MID
+    elif market_cap < 50_000_000_000:
+        base_kelly = config.KELLY_LARGE
+    else:
+        base_kelly = config.KELLY_MEGA
+
+    position_pct = base_kelly * regime_mult * vix_mult * score_mult
+    position_pct = round(min(position_pct, config.KELLY_LARGE), 4)
+
+    size_class = (
+        "MICRO"  if market_cap and market_cap < 300_000_000   else
+        "SMALL"  if market_cap and market_cap < 2_000_000_000 else
+        "MID"    if market_cap and market_cap < 10_000_000_000 else
+        "LARGE"  if market_cap and market_cap < 50_000_000_000 else
+        "MEGA"
+    ) if market_cap else "UNKNOWN"
+
+    return {
+        "position_pct": position_pct,
+        "position_pct_display": f"{position_pct*100:.1f}%",
+        "base_kelly": base_kelly,
+        "regime_mult": regime_mult,
+        "vix_mult": vix_mult,
+        "score_mult": round(score_mult, 2),
+        "size_class": size_class,
+        "reason": "OK",
+    }
+
+
+def _build_alert(r: CandleResult, regime_str: str = "BULL", vix: float = 20.0, market_cap: float = None) -> str:
     """Baut Telegram-Alert. Für LONG: signal_engine-Format; SHORT: altes Format."""
     entry = getattr(r, "price", 0) or 0
     or_h  = getattr(r, "or_high", 0) or 0
@@ -573,6 +649,14 @@ def _build_alert(r: CandleResult, regime_str: str = "BULL") -> str:
     vol   = getattr(r, "vol_ratio", 0) or 0
 
     # Neues Format (signal_engine) — nur für LONG
+    # Kelly-Sizing berechnen
+    _sizing = calc_candle_position(
+        score=getattr(r, "score", 70),
+        market_cap=market_cap,
+        regime=regime_str,
+        vix=vix,
+    )
+
     if r.direction == "LONG" and entry > 0:
         try:
             from signal_engine import format_alert_message, StopState as _StopState
@@ -587,7 +671,7 @@ def _build_alert(r: CandleResult, regime_str: str = "BULL") -> str:
                 regime    = regime_str,
                 ml_prob   = None,
                 vol_ratio = vol,
-                size_pct  = 1.0,
+                size_pct  = _sizing.get("position_pct", config.KELLY_BASE) * 100,
                 spike_pct = round(_spike, 1),
             )
             if msg:
@@ -819,6 +903,7 @@ def run_candle_scan():
         log.info(f'CANDLE SCAN aborted — ausserhalb Handelszeit ({et_h:02d}:{et_m:02d} ET)')
         return
     _regime = {'bear': False, 'panic': False}
+    _vix_val = 20.0
     try:
         from regime import calc_regime, check_regime as _chk_regime
         _regime = calc_regime('US')
@@ -826,6 +911,7 @@ def run_candle_scan():
             log.warning('CANDLE SCAN aborted — US PANIC')
             return
         log.info(f'Regime Gate: {"BEAR" if _regime.get("bear") else "BULL"} | VIX={_regime.get("vix",0):.1f} | Panic={_regime.get("panic")} OK')
+        _vix_val = _regime.get('vix', 20.0)
     except Exception as e:
         log.warning(f'Regime Gate Fehler: {e} — weiter')
         _chk_regime = None
@@ -882,7 +968,23 @@ def run_candle_scan():
     for r in strong:
         # Alert mit aktuellem Regime-String neu bauen
         try:
-            r.alert_text = _build_alert(r, regime_str=_regime_str)
+            # MarktKap holen
+            _mcap = None
+            try:
+                _info = yf.Ticker(r.ticker).info
+                _mcap = _info.get('marketCap', None)
+            except Exception:
+                pass
+            # Sizing pruefen — 0% = kein Alert
+            _sz = calc_candle_position(r.score, _mcap, _regime_str, _vix_val)
+            if _sz['position_pct'] == 0.0:
+                log.info(f'  SKIP {r.ticker} — Sizing blocked: {_sz["reason"]}')
+                continue
+            r.alert_text = _build_alert(r, regime_str=_regime_str, vix=_vix_val, market_cap=_mcap)
+            # Sizing-Zeile an Alert anhaengen
+            _sz_line = chr(10)*2 + chr(0x1F4CF) + ' Size: ' + _sz['size_class'] + ' | Position: ' + _sz['position_pct_display']
+            _sz_line += chr(10) + chr(0x1F4CA) + ' VIX: %.1f | Regime: %s' % (_vix_val, _regime_str)
+            r.alert_text += _sz_line
         except Exception:
             pass
         _send_telegram(r.alert_text)

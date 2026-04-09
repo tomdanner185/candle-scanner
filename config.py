@@ -22,3 +22,17 @@ EXIT_MONITOR_ENABLED  = os.getenv('EXIT_MONITOR_ENABLED', 'true').lower() == 'tr
 
 # ── Signal Engine ───────────────────────────────────────────────────────
 EURUSD_FALLBACK         = float(os.getenv('EURUSD_FALLBACK', '1.08'))
+
+# ── Kelly-Sizing (identisch Panzer Bot P54) ─────────────────────────────
+KELLY_MICRO  = float(os.getenv('KELLY_MICRO',  '0.0'))    # nicht handeln
+KELLY_SMALL  = float(os.getenv('KELLY_SMALL',  '0.01'))   # 1% max
+KELLY_MID    = float(os.getenv('KELLY_MID',    '0.02'))   # 2% max
+KELLY_LARGE  = float(os.getenv('KELLY_LARGE',  '0.03'))   # 3% max
+KELLY_MEGA   = float(os.getenv('KELLY_MEGA',   '0.025'))  # 2.5%
+KELLY_BASE   = float(os.getenv('KELLY_BASE',   '0.02'))   # Default
+
+# Regime-Multiplikatoren
+REGIME_MULT_BULL   = 1.0
+REGIME_MULT_YELLOW = 0.5
+REGIME_MULT_BEAR   = 0.0
+REGIME_MULT_PANIC  = 0.0

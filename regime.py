@@ -23,6 +23,33 @@ log = logging.getLogger(__name__)
 
 PANZER_DB   = os.environ.get("PANZER_DB_PATH", "/app/data/signals.db")
 CACHE_MAX_H = 4   # scan_runs-Daten gelten bis zu 4h als frisch
+# ── VIX Cache (30 Min TTL — identisch Panzer Bot) ───────────────────────
+import time as _time
+
+_vix_cache = {"value": 0.0, "ts": None}
+_VIX_TTL   = 1800  # 30 Minuten
+
+
+def _get_vix_cached() -> float:
+    """VIX mit 30-Min-Cache. Fallback: letzter Wert oder 20.0."""
+    now = _time.time()
+    if _vix_cache["ts"] and now - _vix_cache["ts"] < _VIX_TTL:
+        return _vix_cache["value"]
+    try:
+        v = yf.download("^VIX", period="2d", interval="1d",
+                        progress=False, auto_adjust=True)
+        if not v.empty:
+            val = float(v["Close"].squeeze().dropna().iloc[-1])
+            _vix_cache["value"] = val
+            _vix_cache["ts"]    = now
+            return val
+    except Exception as e:
+        log.debug(f"VIX Download Fehler (nutze Cache): {e}")
+    if _vix_cache["value"]:
+        return _vix_cache["value"]
+    return 20.0
+
+
 
 
 def _read_from_scan_runs() -> dict | None:

@@ -94,3 +94,8 @@ bash /root/sync_shared.sh
   + docker cp in candle_scanner + Integrationstest
 
 Source of Truth: /root/candle_scanner/
+
+## PFLICHT VOR JEDER ÄNDERUNG
+Lese immer zuerst:
+1. MASTER_SCANNER_SPEC.md — endgültiges Modell-Framework
+2. PRE_CHANGE_PROTOCOL.md — Widerspruchs-Registry und Pflichtchecks
